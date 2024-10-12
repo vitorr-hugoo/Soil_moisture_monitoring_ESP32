@@ -10,6 +10,11 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include "esp_task_wdt.h"
+#include <Adafruit_Sensor.h> // Biblioteca unificada da Adafruit para sensores
+#include <DHT.h>
+
+#define DHT11_PIN 13
+#define DHTTYPE DHT11
 
 /*---------------- Lógica -------------------------------------------------------------------------------------------------------
 -> 4 níveis: encharcado, adequado, submolhado, seco
@@ -34,14 +39,28 @@ const int pino_sensor_2 = 33;
 const int pino_sensor_3 = 36;
 const int pino_sensor_4 = 39;
 
-//-------------- Declaração de funções -----------------------------------------------------------------------------------------------
+//--------------- Variáveis da bomba ------------------------------------------------------------------------------------------
+
+const int pino_bomba = 4;
+
+//--------------- DHT11 ----------------------------------------------------------------------------------------------------------
+
+DHT dht(DHT11_PIN, DHTTYPE);
+float Temperatura = 0.00;
+float UmidadeAr = 0.00;
+
+//--------------- Declaração de funções --------------------------------------------------------------------------------------
+void configuraWatchdog(int timeoutSegundos);
+void alimentaWatchdog();
+void handleRoot();
 void aquisicaoDados();
 int media(int sensor1, int sensor2, int sensor3, int sensor4);
 String statusSensor();
 float aquisicaoUmidade();
-void configuraWatchdog(int timeoutSegundos);
-void alimentaWatchdog();
-void handleRoot();
+void acionaBomba(int pino_bomba);
+void leituraTemperatura();
+void leituraUmidade();
+// --------------------------------------------------------------------------------------------------------------------------------
 
 //-------------- Configurações WIFI ----------------------------------------------------------------------------------------------------
 const char *ssid = "xxxxxxxx";
@@ -61,7 +80,8 @@ void setup()
   pinMode(pino_sensor_2, INPUT);
   pinMode(pino_sensor_3, INPUT);
   pinMode(pino_sensor_4, INPUT);
-
+  pinMode(pino_bomba, OUTPUT);
+  pinMode(DHT11_PIN, INPUT);
   configuraWatchdog(15); // Configura o Watchdog Timer com timeout de 15 segundos
 
   // INICIA E CONFIGURA WIFI
@@ -95,7 +115,10 @@ void loop()
   media(valor_sensor_1, valor_sensor_2, valor_sensor_3, valor_sensor_4);
   server.handleClient(); // Lida com requisições HTTP
   delay(2);              // Pequeno atraso para evitar consumo excessivo de CPU
-  alimentaWatchdog();    // Alimenta o Watchdog Timer
+  leituraTemperatura();
+  leituraUmidade();
+  acionaBomba(pino_bomba);
+  alimentaWatchdog(); // Alimenta o Watchdog Timer
 }
 
 // FUNÇÃO QUE FAZ A LEITURA ANALOGICA DO SENSOR
@@ -184,4 +207,41 @@ void handleRoot()
            media_sensores, statusSensor(), aquisicaoUmidade());
 
   server.send(200, "text/html", msg);
+}
+void acionaBomba(int pino_bomba)
+{
+  if (media_sensores >= 1900)
+  {
+    digitalWrite(pino_bomba, LOW); // Liga a bomba
+    alimentaWatchdog();
+    delay(5000); // Mantém a bomba ligada por 5 segundos
+  }
+  else if (media_sensores >= 1500 && media_sensores < 1900)
+  {
+    digitalWrite(pino_bomba, LOW); // Liga a bomba
+    alimentaWatchdog();
+    delay(2500); // Mantém a bomba ligada por 2,5 segundos
+  }
+  else
+  {
+    digitalWrite(pino_bomba, HIGH); // Desliga a bomba
+  }
+}
+
+void leituraTemperatura()
+{
+  Temperatura = dht.readHumidity();
+  Serial.print("Temperature: ");
+  Serial.print(Temperatura);
+  Serial.println("°C ");
+  Serial.println("---------------------------- ");
+}
+
+void leituraUmidade()
+{
+  UmidadeAr = dht.readTemperature();
+  Serial.print("Humidity: ");
+  Serial.print(UmidadeAr);
+  Serial.println("%");
+  Serial.println("---------------------------- ");
 }
